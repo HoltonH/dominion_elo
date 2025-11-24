@@ -45,6 +45,7 @@
 
     input[type="text"],
     input[type="number"],
+    input[type="date"],
     select {
       width: 100%;
       box-sizing: border-box;
@@ -152,23 +153,6 @@
       color: #bbf7d0;
     }
 
-    .pill-loss {
-      background: #b91c1c33;
-      color: #fecaca;
-    }
-
-    .pill-delta-positive {
-      color: #4ade80;
-    }
-
-    .pill-delta-negative {
-      color: #f97373;
-    }
-
-    .pill-delta-neutral {
-      color: #e5e7eb;
-    }
-
     .game-players {
       font-size: 0.8rem;
       color: #9ca3af;
@@ -211,11 +195,50 @@
   <div class="container">
     <h1>Dominion ELO Tracker</h1>
 
+    <!-- TOP SECTION: Log game -->
+    <div class="card">
+      <h2>Log game</h2>
+      <div class="small-text" style="margin-bottom:0.5rem;">
+        Select 2 or 3 players and rank them 1st / 2nd / 3rd. The app
+        converts this into pairwise ELO matchups.
+      </div>
+
+      <div class="row">
+        <div class="field inline" style="max-width:180px;">
+          <label for="gameDate">Date</label>
+          <input id="gameDate" type="date" />
+        </div>
+      </div>
+
+      <div id="gamePlayersSection" style="margin-top:0.5rem;"></div>
+
+      <div style="margin-top:0.75rem;">
+        <button id="addGameBtn">+ Log game</button>
+      </div>
+    </div>
+
+    <!-- TOP SECTION: Ratings -->
+    <div class="card">
+      <div class="flex-between">
+        <h2>Ratings</h2>
+        <span class="badge" id="gamesCountBadge">0 games logged</span>
+      </div>
+      <div id="ratingsTableWrapper"></div>
+    </div>
+
+    <!-- TOP SECTION: Game history -->
+    <div class="card">
+      <h2>Game history</h2>
+      <div id="gamesTableWrapper" class="small-text">
+        No games yet – log your first one above.
+      </div>
+    </div>
+
     <!-- Players card -->
     <div class="card">
       <div class="flex-between">
         <h2>Players</h2>
-        <span class="badge">Data is saved in this browser via localStorage</span>
+        <span class="badge">Shared via Firebase Firestore (all of you see the same league)</span>
       </div>
 
       <div class="row">
@@ -254,85 +277,51 @@
           </button>
         </div>
       </div>
-    </div>
-
-    <!-- New game card -->
-    <div class="card">
-      <h2>Log game</h2>
-      <div class="small-text" style="margin-bottom:0.5rem;">
-        Select 2 or 3 players and rank them 1st / 2nd / 3rd. The app
-        converts this into pairwise ELO matchups.
-      </div>
-
-      <div class="row">
-        <div class="field inline" style="max-width:180px;">
-          <label for="gameDate">Date</label>
-          <input id="gameDate" type="date" />
-        </div>
-      </div>
-
-      <div id="gamePlayersSection" style="margin-top:0.5rem;"></div>
-
-      <div style="margin-top:0.75rem;">
-        <button id="addGameBtn">+ Log game</button>
-      </div>
-    </div>
-
-    <!-- Ratings & history -->
-    <div class="card">
-      <div class="flex-between">
-        <h2>Ratings</h2>
-        <span class="badge" id="gamesCountBadge">0 games logged</span>
-      </div>
-      <div id="ratingsTableWrapper"></div>
-    </div>
-
-    <div class="card">
-      <h2>Game history</h2>
-      <div id="gamesTableWrapper" class="small-text">
-        No games yet – log your first one above.
+      <div class="small-text">
+        Reset all data wipes players, games, and settings from Firestore for this league.
       </div>
     </div>
   </div>
 
-  <script>
-    // -------- Storage keys --------
-    const STORAGE_KEY_PLAYERS = "dominionEloPlayers_v1";
-    const STORAGE_KEY_GAMES = "dominionEloGames_v1";
-    const STORAGE_KEY_SETTINGS = "dominionEloSettings_v1";
+  <!-- Main app logic + Firebase (module script) -->
+  <script type="module">
+    // ---------- Firebase imports ----------
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      doc,
+      setDoc,
+      addDoc,
+      deleteDoc,
+      updateDoc,
+      getDocs,
+      onSnapshot
+    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
-    // -------- State --------
-    let players = [];
-    let games = [];
-    let settings = {
-      kFactor: 32
+    // ---------- Firebase config ----------
+    // TODO: replace this object with your real config from the Firebase console
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      // You can include other fields from the config snippet too (optional for Firestore only)
     };
 
-    // -------- Utilities --------
-    function saveState() {
-      localStorage.setItem(STORAGE_KEY_PLAYERS, JSON.stringify(players));
-      localStorage.setItem(STORAGE_KEY_GAMES, JSON.stringify(games));
-      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
-    }
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-    function loadState() {
-      try {
-        const storedPlayers = JSON.parse(localStorage.getItem(STORAGE_KEY_PLAYERS));
-        const storedGames = JSON.parse(localStorage.getItem(STORAGE_KEY_GAMES));
-        const storedSettings = JSON.parse(localStorage.getItem(STORAGE_KEY_SETTINGS));
+    // Firestore references
+    const playersCol = collection(db, "players");
+    const gamesCol = collection(db, "games");
+    const settingsDocRef = doc(db, "settings", "global");
 
-        if (Array.isArray(storedPlayers)) players = storedPlayers;
-        if (Array.isArray(storedGames)) games = storedGames;
-        if (storedSettings && typeof storedSettings === "object") settings = storedSettings;
-      } catch (e) {
-        console.error("Error loading state", e);
-      }
-    }
+    // ---------- In-memory state ----------
+    let players = [];  // { id, name, startingRating }
+    let games = [];    // { id, date, placements, participants }
+    let settings = { kFactor: 32 };
 
-    function generateId() {
-      return Math.random().toString(36).slice(2, 10);
-    }
-
+    // ---------- Helpers ----------
     function getPlayerById(id) {
       return players.find(p => p.id === id);
     }
@@ -348,12 +337,11 @@
       });
     }
 
-    // -------- ELO calculation --------
+    // ELO calculation given a single game + current ratings
     function calculateEloChanges(game, kFactor) {
-      // game: { id, date, placements: [{playerId, rank}], participants: [playerId...] }
-      const participants = game.participants.map(id => getPlayerById(id));
+      const participants = game.participants.map(id => getPlayerById(id)).filter(Boolean);
       const deltas = {};
-      participants.forEach(p => deltas[p.id] = 0);
+      participants.forEach(p => (deltas[p.id] = 0));
 
       // Snapshot of ratings at game start
       const ratingsAtStart = {};
@@ -361,7 +349,6 @@
         ratingsAtStart[p.id] = p.rating;
       });
 
-      // For each pair of participants, compute outcome
       for (let i = 0; i < participants.length; i++) {
         for (let j = i + 1; j < participants.length; j++) {
           const pA = participants[i];
@@ -399,7 +386,28 @@
       return deltas;
     }
 
-    // -------- Render: players table --------
+    // Recalculate ratings from scratch based on players + games + settings
+    function recalculateRatingsFromScratch() {
+      // Start everyone at their starting rating
+      players.forEach(p => {
+        p.rating = p.startingRating || 1500;
+      });
+
+      const sortedGames = [...games].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+      sortedGames.forEach(game => {
+        const k = settings.kFactor || 32;
+        const deltas = calculateEloChanges(game, k);
+        Object.keys(deltas).forEach(playerId => {
+          const player = getPlayerById(playerId);
+          if (player) {
+            player.rating += deltas[playerId];
+          }
+        });
+      });
+    }
+
+    // ---------- Rendering ----------
     function renderPlayersTable() {
       const wrapper = document.getElementById("playersTableWrapper");
       if (!players.length) {
@@ -407,7 +415,7 @@
         return;
       }
 
-      const sorted = [...players].sort((a, b) => b.rating - a.rating);
+      const sorted = [...players].sort((a, b) => (b.rating || 0) - (a.rating || 0));
 
       let html = "<table><thead><tr>";
       html += "<th>Name</th><th>Rating</th><th>Games</th><th></th></tr></thead><tbody>";
@@ -425,22 +433,18 @@
       html += "</tbody></table>";
       wrapper.innerHTML = html;
 
-      // Attach remove handlers
       wrapper.querySelectorAll("button[data-remove-player]").forEach(btn => {
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", async () => {
           const id = btn.getAttribute("data-remove-player");
-          if (!confirm("Remove this player? Their games will stay in history, but they won't show in new ratings.")) {
+          if (!confirm("Remove this player from Firestore? Their existing games will still reference them.")) {
             return;
           }
-          players = players.filter(p => p.id !== id);
-          // Optionally, we could also remove from games, but let's keep history intact.
-          saveState();
-          renderAll();
+          await deleteDoc(doc(db, "players", id));
+          // onSnapshot will update UI
         });
       });
     }
 
-    // -------- Render: ratings (essentially same as players, but separate area) --------
     function renderRatingsTable() {
       const wrapper = document.getElementById("ratingsTableWrapper");
       if (!players.length) {
@@ -448,7 +452,7 @@
         return;
       }
 
-      const sorted = [...players].sort((a, b) => b.rating - a.rating);
+      const sorted = [...players].sort((a, b) => (b.rating || 0) - (a.rating || 0));
 
       let html = "<table><thead><tr>";
       html += "<th>#</th><th>Name</th><th>Rating</th><th>Games</th></tr></thead><tbody>";
@@ -467,7 +471,6 @@
       wrapper.innerHTML = html;
     }
 
-    // -------- Render: game log form (player selectors) --------
     function renderGamePlayersForm() {
       const section = document.getElementById("gamePlayersSection");
       if (players.length < 2) {
@@ -475,9 +478,10 @@
         return;
       }
 
-      const playerOptions = players.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+      const playerOptions = players
+        .map(p => `<option value="${p.id}">${p.name}</option>`)
+        .join("");
 
-      // We'll allow up to 3 slots, but only require 2
       section.innerHTML = `
         <div class="row">
           <div class="field">
@@ -509,7 +513,6 @@
       `;
     }
 
-    // -------- Render: games history --------
     function renderGamesTable() {
       const wrapper = document.getElementById("gamesTableWrapper");
       const gamesCountBadge = document.getElementById("gamesCountBadge");
@@ -520,7 +523,6 @@
         return;
       }
 
-      // Most recent first
       const sorted = [...games].sort((a, b) => {
         const da = a.date || "";
         const db = b.date || "";
@@ -545,13 +547,9 @@
 
         html += `<tr>
           <td>${formatDate(game.date)}</td>
-          <td>
-            <span class="tag-pill pill-win">Winner: ${winnerName}</span>
-          </td>
+          <td><span class="tag-pill pill-win">Winner: ${winnerName}</span></td>
           <td class="game-players">${participantsNames}</td>
-          <td>
-            <button class="secondary" data-delete-game="${game.id}">Delete</button>
-          </td>
+          <td><button class="secondary" data-delete-game="${game.id}">Delete</button></td>
         </tr>`;
       });
 
@@ -559,165 +557,183 @@
       wrapper.innerHTML = html;
 
       wrapper.querySelectorAll("button[data-delete-game]").forEach(btn => {
-        btn.addEventListener("click", () => {
+        btn.addEventListener("click", async () => {
           const id = btn.getAttribute("data-delete-game");
-          if (!confirm("Delete this game from history and ratings? This will recalculate all ratings.")) {
+          if (!confirm("Delete this game from Firestore? Ratings will be recalculated.")) {
             return;
           }
-          games = games.filter(g => g.id !== id);
-          recalculateRatingsFromScratch();
-          saveState();
-          renderAll();
+          await deleteDoc(doc(db, "games", id));
+          // onSnapshot will update UI
         });
       });
     }
 
-    // -------- Ratings recomputation --------
-    function recalculateRatingsFromScratch() {
-      // Reset ratings to startingRating
-      players.forEach(p => {
-        p.rating = p.startingRating || 1500;
-      });
-
-      // Apply games in chronological order
-      const sorted = [...games].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-      sorted.forEach(game => {
-        const deltas = calculateEloChanges(game, settings.kFactor || 32);
-        Object.keys(deltas).forEach(playerId => {
-          const player = getPlayerById(playerId);
-          if (player) {
-            player.rating += deltas[playerId];
-          }
-        });
-      });
-    }
-
-    // -------- Render all --------
     function renderAll() {
       renderPlayersTable();
       renderRatingsTable();
       renderGamePlayersForm();
       renderGamesTable();
-      document.getElementById("kFactor").value = settings.kFactor || 32;
+
+      const kInput = document.getElementById("kFactor");
+      if (kInput) {
+        kInput.value = settings.kFactor || 32;
+      }
     }
 
-    // -------- Event wiring --------
+    // ---------- Firestore subscriptions ----------
+    function subscribeToFirestore() {
+      // Players
+      onSnapshot(playersCol, snapshot => {
+        players = snapshot.docs.map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        }));
+        recalculateRatingsFromScratch();
+        renderAll();
+      });
+
+      // Games
+      onSnapshot(gamesCol, snapshot => {
+        games = snapshot.docs.map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        }));
+        recalculateRatingsFromScratch();
+        renderAll();
+      });
+
+      // Settings (single doc)
+      onSnapshot(settingsDocRef, async docSnap => {
+        if (!docSnap.exists()) {
+          // Create default settings if none exist yet
+          await setDoc(settingsDocRef, { kFactor: 32 });
+          settings = { kFactor: 32 };
+        } else {
+          settings = { kFactor: docSnap.data().kFactor ?? 32 };
+        }
+        recalculateRatingsFromScratch();
+        renderAll();
+      });
+    }
+
+    // ---------- Reset all data ----------
+    async function resetAllData() {
+      if (!confirm("This will delete ALL players, games, and settings from Firestore. Continue?")) {
+        return;
+      }
+
+      // Delete players
+      const playersSnap = await getDocs(playersCol);
+      await Promise.all(playersSnap.docs.map(d => deleteDoc(d.ref)));
+
+      // Delete games
+      const gamesSnap = await getDocs(gamesCol);
+      await Promise.all(gamesSnap.docs.map(d => deleteDoc(d.ref)));
+
+      // Reset settings
+      await setDoc(settingsDocRef, { kFactor: 32 });
+    }
+
+    // ---------- Event wiring ----------
     function setupEventHandlers() {
       const addPlayerBtn = document.getElementById("addPlayerBtn");
       const newPlayerNameInput = document.getElementById("newPlayerName");
       const startingRatingInput = document.getElementById("startingRating");
-
-      addPlayerBtn.addEventListener("click", () => {
-        const name = newPlayerNameInput.value.trim();
-        let rating = Number(startingRatingInput.value);
-        if (!name) {
-          alert("Enter a player name.");
-          return;
-        }
-        if (!Number.isFinite(rating)) rating = 1500;
-
-        players.push({
-          id: generateId(),
-          name,
-          rating,
-          startingRating: rating
-        });
-
-        newPlayerNameInput.value = "";
-        saveState();
-        renderAll();
-      });
-
-      const kFactorInput = document.getElementById("kFactor");
-      kFactorInput.addEventListener("change", () => {
-        let k = Number(kFactorInput.value);
-        if (!Number.isFinite(k) || k <= 0) k = 32;
-        settings.kFactor = k;
-        // Recompute all ratings using new K
-        recalculateRatingsFromScratch();
-        saveState();
-        renderAll();
-      });
-
-      const resetAllBtn = document.getElementById("resetAllBtn");
-      resetAllBtn.addEventListener("click", () => {
-        if (!confirm("This will clear all players, games, and settings. Continue?")) {
-          return;
-        }
-        players = [];
-        games = [];
-        settings = { kFactor: 32 };
-        saveState();
-        renderAll();
-      });
-
       const addGameBtn = document.getElementById("addGameBtn");
-      addGameBtn.addEventListener("click", () => {
-        const dateInput = document.getElementById("gameDate");
-        const date = dateInput.value || new Date().toISOString().slice(0, 10);
-
-        const slot1 = document.getElementById("slot1");
-        const slot2 = document.getElementById("slot2");
-        const slot3 = document.getElementById("slot3");
-
-        const p1 = slot1.value;
-        const p2 = slot2.value;
-        const p3 = slot3.value;
-
-        if (!p1 || !p2) {
-          alert("You need at least 1st and 2nd place players.");
-          return;
-        }
-
-        // Make sure no duplicates
-        const chosen = [p1, p2, p3].filter(Boolean);
-        const unique = new Set(chosen);
-        if (unique.size !== chosen.length) {
-          alert("Each placement must be a different player.");
-          return;
-        }
-
-        const placements = [];
-        placements.push({ playerId: p1, rank: 1 });
-        placements.push({ playerId: p2, rank: 2 });
-        if (p3) placements.push({ playerId: p3, rank: 3 });
-
-        const participants = placements.map(pl => pl.playerId);
-
-        const game = {
-          id: generateId(),
-          date,
-          placements,
-          participants
-        };
-
-        games.push(game);
-
-        // Update ratings
-        const deltas = calculateEloChanges(game, settings.kFactor || 32);
-        Object.keys(deltas).forEach(playerId => {
-          const player = getPlayerById(playerId);
-          if (player) {
-            player.rating += deltas[playerId];
-          }
-        });
-
-        saveState();
-        renderAll();
-      });
-
-      // Default date = today
+      const kFactorInput = document.getElementById("kFactor");
+      const resetAllBtn = document.getElementById("resetAllBtn");
       const gameDateInput = document.getElementById("gameDate");
-      const today = new Date().toISOString().slice(0, 10);
-      gameDateInput.value = today;
+
+      // Default date to today
+      if (gameDateInput) {
+        const today = new Date().toISOString().slice(0, 10);
+        gameDateInput.value = today;
+      }
+
+      if (addPlayerBtn) {
+        addPlayerBtn.addEventListener("click", async () => {
+          const name = newPlayerNameInput.value.trim();
+          let rating = Number(startingRatingInput.value);
+          if (!name) {
+            alert("Enter a player name.");
+            return;
+          }
+          if (!Number.isFinite(rating)) rating = 1500;
+
+          await addDoc(playersCol, {
+            name,
+            startingRating: rating
+          });
+
+          newPlayerNameInput.value = "";
+          // UI will refresh via onSnapshot
+        });
+      }
+
+      if (kFactorInput) {
+        kFactorInput.addEventListener("change", async () => {
+          let k = Number(kFactorInput.value);
+          if (!Number.isFinite(k) || k <= 0) k = 32;
+          await setDoc(settingsDocRef, { kFactor: k }, { merge: true });
+          // onSnapshot will update settings & recompute
+        });
+      }
+
+      if (resetAllBtn) {
+        resetAllBtn.addEventListener("click", () => {
+          resetAllData();
+        });
+      }
+
+      if (addGameBtn) {
+        addGameBtn.addEventListener("click", async () => {
+          const dateInput = document.getElementById("gameDate");
+          const date = dateInput.value || new Date().toISOString().slice(0, 10);
+
+          const slot1 = document.getElementById("slot1");
+          const slot2 = document.getElementById("slot2");
+          const slot3 = document.getElementById("slot3");
+
+          const p1 = slot1.value;
+          const p2 = slot2.value;
+          const p3 = slot3.value;
+
+          if (!p1 || !p2) {
+            alert("You need at least 1st and 2nd place players.");
+            return;
+          }
+
+          const chosen = [p1, p2, p3].filter(Boolean);
+          const unique = new Set(chosen);
+          if (unique.size !== chosen.length) {
+            alert("Each placement must be a different player.");
+            return;
+          }
+
+          const placements = [
+            { playerId: p1, rank: 1 },
+            { playerId: p2, rank: 2 }
+          ];
+          if (p3) placements.push({ playerId: p3, rank: 3 });
+
+          const participants = placements.map(pl => pl.playerId);
+
+          const game = {
+            date,
+            placements,
+            participants
+          };
+
+          await addDoc(gamesCol, game);
+          // onSnapshot will update ratings & UI
+        });
+      }
     }
 
-    // -------- Init --------
-    loadState();
+    // ---------- Init ----------
     document.addEventListener("DOMContentLoaded", () => {
       setupEventHandlers();
-      recalculateRatingsFromScratch();
-      renderAll();
+      subscribeToFirestore();
     });
   </script>
 </body>
