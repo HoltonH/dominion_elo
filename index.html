@@ -285,8 +285,8 @@
 
   <!-- Main app logic + Firebase (module script) -->
   <script type="module">
-    // ---------- Firebase imports ----------
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    // ---------- Firebase imports (v12.6.0 CDN) ----------
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
     import {
       getFirestore,
       collection,
@@ -294,18 +294,19 @@
       setDoc,
       addDoc,
       deleteDoc,
-      updateDoc,
       getDocs,
       onSnapshot
-    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+    } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
-    // ---------- Firebase config ----------
-    // TODO: replace this object with your real config from the Firebase console
+    // ---------- Firebase config (your real config) ----------
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      // You can include other fields from the config snippet too (optional for Firestore only)
+      apiKey: "AIzaSyALtVTPDkdpfI2c2A9K-At3MDWLJv4yVR0",
+      authDomain: "dominion-elo.firebaseapp.com",
+      projectId: "dominion-elo",
+      storageBucket: "dominion-elo.firebasestorage.app",
+      messagingSenderId: "923492313678",
+      appId: "1:923492313678:web:d3b1d472c14fc5e0a9711f",
+      measurementId: "G-QZ75F03RG3"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -317,7 +318,7 @@
     const settingsDocRef = doc(db, "settings", "global");
 
     // ---------- In-memory state ----------
-    let players = [];  // { id, name, startingRating }
+    let players = [];  // { id, name, startingRating, rating }
     let games = [];    // { id, date, placements, participants }
     let settings = { kFactor: 32 };
 
