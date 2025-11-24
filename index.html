@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dominion ELO Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.5rem;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 0.75rem;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #020617;
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      border: 1px solid #1f2937;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      margin-bottom: 0.25rem;
+      color: #9ca3af;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.4rem 0.5rem;
+      border-radius: 0.4rem;
+      border: 1px solid #4b5563;
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+
+    input[type="number"] {
+      max-width: 120px;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      background: #4f46e5;
+      color: white;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    button.secondary {
+      background: #111827;
+      color: #e5e7eb;
+      border: 1px solid #374151;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: flex-end;
+    }
+
+    .row > .field {
+      flex: 1 1 150px;
+      min-width: 140px;
+    }
+
+    .field.inline {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .small-text {
+      font-size: 0.8rem;
+      color: #9ca3af;
+      margin-top: 0.25rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 0.45rem 0.35rem;
+      text-align: left;
+    }
+
+    th {
+      border-bottom: 1px solid #374151;
+      color: #9ca3af;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    tr:nth-child(even) {
+      background: #020617;
+    }
+
+    tr:nth-child(odd) {
+      background: #020617;
+    }
+
+    .rating {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tag-pill {
+      display: inline-block;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      background: #111827;
+      font-size: 0.75rem;
+      color: #e5e7eb;
+    }
+
+    .pill-win {
+      background: #16a34a33;
+      color: #bbf7d0;
+    }
+
+    .pill-loss {
+      background: #b91c1c33;
+      color: #fecaca;
+    }
+
+    .pill-delta-positive {
+      color: #4ade80;
+    }
+
+    .pill-delta-negative {
+      color: #f97373;
+    }
+
+    .pill-delta-neutral {
+      color: #e5e7eb;
+    }
+
+    .game-players {
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    .flex-between {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 0.1rem 0.5rem;
+      border-radius: 999px;
+      background: #111827;
+      color: #9ca3af;
+    }
+
+    .danger {
+      color: #fecaca;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 0.75rem;
+      }
+      .card {
+        padding: 0.75rem;
+      }
+      h1 {
+        font-size: 1.4rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Dominion ELO Tracker</h1>
+
+    <!-- Players card -->
+    <div class="card">
+      <div class="flex-between">
+        <h2>Players</h2>
+        <span class="badge">Data is saved in this browser via localStorage</span>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="newPlayerName">Add player</label>
+          <input id="newPlayerName" type="text" placeholder="e.g. Holton" />
+        </div>
+        <div class="field inline" style="max-width:140px;">
+          <label for="startingRating">Starting rating</label>
+          <input id="startingRating" type="number" value="1500" />
+        </div>
+        <div class="field" style="flex:0 0 auto;">
+          <button id="addPlayerBtn">+ Add</button>
+        </div>
+      </div>
+
+      <div class="small-text">
+        Tip: for “me and 2 friends,” just add those 3 once and reuse them.
+      </div>
+
+      <div id="playersTableWrapper" style="margin-top:0.75rem;"></div>
+    </div>
+
+    <!-- Settings / K-factor -->
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="row">
+        <div class="field inline" style="max-width:160px;">
+          <label for="kFactor">K-factor</label>
+          <input id="kFactor" type="number" value="32" min="1" max="100" />
+          <div class="small-text">Higher = ratings move faster.</div>
+        </div>
+        <div class="field" style="flex:0 0 auto;">
+          <button class="secondary" id="resetAllBtn">
+            Reset all data
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- New game card -->
+    <div class="card">
+      <h2>Log game</h2>
+      <div class="small-text" style="margin-bottom:0.5rem;">
+        Select 2 or 3 players and rank them 1st / 2nd / 3rd. The app
+        converts this into pairwise ELO matchups.
+      </div>
+
+      <div class="row">
+        <div class="field inline" style="max-width:180px;">
+          <label for="gameDate">Date</label>
+          <input id="gameDate" type="date" />
+        </div>
+      </div>
+
+      <div id="gamePlayersSection" style="margin-top:0.5rem;"></div>
+
+      <div style="margin-top:0.75rem;">
+        <button id="addGameBtn">+ Log game</button>
+      </div>
+    </div>
+
+    <!-- Ratings & history -->
+    <div class="card">
+      <div class="flex-between">
+        <h2>Ratings</h2>
+        <span class="badge" id="gamesCountBadge">0 games logged</span>
+      </div>
+      <div id="ratingsTableWrapper"></div>
+    </div>
+
+    <div class="card">
+      <h2>Game history</h2>
+      <div id="gamesTableWrapper" class="small-text">
+        No games yet – log your first one above.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -------- Storage keys --------
+    const STORAGE_KEY_PLAYERS = "dominionEloPlayers_v1";
+    const STORAGE_KEY_GAMES = "dominionEloGames_v1";
+    const STORAGE_KEY_SETTINGS = "dominionEloSettings_v1";
+
+    // -------- State --------
+    let players = [];
+    let games = [];
+    let settings = {
+      kFactor: 32
+    };
+
+    // -------- Utilities --------
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY_PLAYERS, JSON.stringify(players));
+      localStorage.setItem(STORAGE_KEY_GAMES, JSON.stringify(games));
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+    }
+
+    function loadState() {
+      try {
+        const storedPlayers = JSON.parse(localStorage.getItem(STORAGE_KEY_PLAYERS));
+        const storedGames = JSON.parse(localStorage.getItem(STORAGE_KEY_GAMES));
+        const storedSettings = JSON.parse(localStorage.getItem(STORAGE_KEY_SETTINGS));
+
+        if (Array.isArray(storedPlayers)) players = storedPlayers;
+        if (Array.isArray(storedGames)) games = storedGames;
+        if (storedSettings && typeof storedSettings === "object") settings = storedSettings;
+      } catch (e) {
+        console.error("Error loading state", e);
+      }
+    }
+
+    function generateId() {
+      return Math.random().toString(36).slice(2, 10);
+    }
+
+    function getPlayerById(id) {
+      return players.find(p => p.id === id);
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return "";
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      });
+    }
+
+    // -------- ELO calculation --------
+    function calculateEloChanges(game, kFactor) {
+      // game: { id, date, placements: [{playerId, rank}], participants: [playerId...] }
+      const participants = game.participants.map(id => getPlayerById(id));
+      const deltas = {};
+      participants.forEach(p => deltas[p.id] = 0);
+
+      // Snapshot of ratings at game start
+      const ratingsAtStart = {};
+      participants.forEach(p => {
+        ratingsAtStart[p.id] = p.rating;
+      });
+
+      // For each pair of participants, compute outcome
+      for (let i = 0; i < participants.length; i++) {
+        for (let j = i + 1; j < participants.length; j++) {
+          const pA = participants[i];
+          const pB = participants[j];
+
+          const rA = ratingsAtStart[pA.id];
+          const rB = ratingsAtStart[pB.id];
+
+          const placementA = game.placements.find(pl => pl.playerId === pA.id);
+          const placementB = game.placements.find(pl => pl.playerId === pB.id);
+
+          const rankA = placementA ? placementA.rank : 3;
+          const rankB = placementB ? placementB.rank : 3;
+
+          let scoreA;
+          if (rankA === rankB) {
+            scoreA = 0.5; // tie
+          } else if (rankA < rankB) {
+            scoreA = 1; // A placed higher
+          } else {
+            scoreA = 0; // B placed higher
+          }
+          const scoreB = 1 - scoreA;
+
+          const expectedA = 1 / (1 + Math.pow(10, (rB - rA) / 400));
+          const expectedB = 1 - expectedA;
+
+          const deltaA = kFactor * (scoreA - expectedA);
+          const deltaB = kFactor * (scoreB - expectedB);
+
+          deltas[pA.id] += deltaA;
+          deltas[pB.id] += deltaB;
+        }
+      }
+      return deltas;
+    }
+
+    // -------- Render: players table --------
+    function renderPlayersTable() {
+      const wrapper = document.getElementById("playersTableWrapper");
+      if (!players.length) {
+        wrapper.innerHTML = '<div class="small-text">Add players above to get started.</div>';
+        return;
+      }
+
+      const sorted = [...players].sort((a, b) => b.rating - a.rating);
+
+      let html = "<table><thead><tr>";
+      html += "<th>Name</th><th>Rating</th><th>Games</th><th></th></tr></thead><tbody>";
+
+      sorted.forEach(p => {
+        const numGames = games.filter(g => g.participants.includes(p.id)).length;
+        html += `<tr>
+          <td>${p.name}</td>
+          <td class="rating">${Math.round(p.rating)}</td>
+          <td>${numGames}</td>
+          <td><button class="secondary" data-remove-player="${p.id}">Remove</button></td>
+        </tr>`;
+      });
+
+      html += "</tbody></table>";
+      wrapper.innerHTML = html;
+
+      // Attach remove handlers
+      wrapper.querySelectorAll("button[data-remove-player]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-remove-player");
+          if (!confirm("Remove this player? Their games will stay in history, but they won't show in new ratings.")) {
+            return;
+          }
+          players = players.filter(p => p.id !== id);
+          // Optionally, we could also remove from games, but let's keep history intact.
+          saveState();
+          renderAll();
+        });
+      });
+    }
+
+    // -------- Render: ratings (essentially same as players, but separate area) --------
+    function renderRatingsTable() {
+      const wrapper = document.getElementById("ratingsTableWrapper");
+      if (!players.length) {
+        wrapper.innerHTML = '<div class="small-text">No players yet.</div>';
+        return;
+      }
+
+      const sorted = [...players].sort((a, b) => b.rating - a.rating);
+
+      let html = "<table><thead><tr>";
+      html += "<th>#</th><th>Name</th><th>Rating</th><th>Games</th></tr></thead><tbody>";
+
+      sorted.forEach((p, idx) => {
+        const numGames = games.filter(g => g.participants.includes(p.id)).length;
+        html += `<tr>
+          <td>${idx + 1}</td>
+          <td>${p.name}</td>
+          <td class="rating">${Math.round(p.rating)}</td>
+          <td>${numGames}</td>
+        </tr>`;
+      });
+
+      html += "</tbody></table>";
+      wrapper.innerHTML = html;
+    }
+
+    // -------- Render: game log form (player selectors) --------
+    function renderGamePlayersForm() {
+      const section = document.getElementById("gamePlayersSection");
+      if (players.length < 2) {
+        section.innerHTML = '<div class="small-text danger">You need at least 2 players to log a game.</div>';
+        return;
+      }
+
+      const playerOptions = players.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+
+      // We'll allow up to 3 slots, but only require 2
+      section.innerHTML = `
+        <div class="row">
+          <div class="field">
+            <label>1st place</label>
+            <select id="slot1">
+              <option value="">-- select player --</option>
+              ${playerOptions}
+            </select>
+          </div>
+          <div class="field">
+            <label>2nd place</label>
+            <select id="slot2">
+              <option value="">-- select player --</option>
+              ${playerOptions}
+            </select>
+          </div>
+          <div class="field">
+            <label>3rd place (optional)</label>
+            <select id="slot3">
+              <option value="">-- none / not played --</option>
+              ${playerOptions}
+            </select>
+          </div>
+        </div>
+        <div class="small-text">
+          For a 2-player game, just fill 1st and 2nd place.<br/>
+          For a 3-player game, fill all three.
+        </div>
+      `;
+    }
+
+    // -------- Render: games history --------
+    function renderGamesTable() {
+      const wrapper = document.getElementById("gamesTableWrapper");
+      const gamesCountBadge = document.getElementById("gamesCountBadge");
+      gamesCountBadge.textContent = `${games.length} game${games.length === 1 ? "" : "s"} logged`;
+
+      if (!games.length) {
+        wrapper.innerHTML = '<div class="small-text">No games yet – log your first one above.</div>';
+        return;
+      }
+
+      // Most recent first
+      const sorted = [...games].sort((a, b) => {
+        const da = a.date || "";
+        const db = b.date || "";
+        return db.localeCompare(da);
+      });
+
+      let html = "<table><thead><tr>";
+      html += "<th>Date</th><th>Result</th><th>Players</th><th></th></tr></thead><tbody>";
+
+      sorted.forEach(game => {
+        const placementsSorted = [...game.placements].sort((a, b) => a.rank - b.rank);
+        const participantsNames = placementsSorted
+          .map(pl => {
+            const p = getPlayerById(pl.playerId);
+            return p ? `${pl.rank}️⃣ ${p.name}` : "";
+          })
+          .filter(Boolean)
+          .join("<br/>");
+
+        const winner = getPlayerById(placementsSorted[0].playerId);
+        const winnerName = winner ? winner.name : "Unknown";
+
+        html += `<tr>
+          <td>${formatDate(game.date)}</td>
+          <td>
+            <span class="tag-pill pill-win">Winner: ${winnerName}</span>
+          </td>
+          <td class="game-players">${participantsNames}</td>
+          <td>
+            <button class="secondary" data-delete-game="${game.id}">Delete</button>
+          </td>
+        </tr>`;
+      });
+
+      html += "</tbody></table>";
+      wrapper.innerHTML = html;
+
+      wrapper.querySelectorAll("button[data-delete-game]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-delete-game");
+          if (!confirm("Delete this game from history and ratings? This will recalculate all ratings.")) {
+            return;
+          }
+          games = games.filter(g => g.id !== id);
+          recalculateRatingsFromScratch();
+          saveState();
+          renderAll();
+        });
+      });
+    }
+
+    // -------- Ratings recomputation --------
+    function recalculateRatingsFromScratch() {
+      // Reset ratings to startingRating
+      players.forEach(p => {
+        p.rating = p.startingRating || 1500;
+      });
+
+      // Apply games in chronological order
+      const sorted = [...games].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      sorted.forEach(game => {
+        const deltas = calculateEloChanges(game, settings.kFactor || 32);
+        Object.keys(deltas).forEach(playerId => {
+          const player = getPlayerById(playerId);
+          if (player) {
+            player.rating += deltas[playerId];
+          }
+        });
+      });
+    }
+
+    // -------- Render all --------
+    function renderAll() {
+      renderPlayersTable();
+      renderRatingsTable();
+      renderGamePlayersForm();
+      renderGamesTable();
+      document.getElementById("kFactor").value = settings.kFactor || 32;
+    }
+
+    // -------- Event wiring --------
+    function setupEventHandlers() {
+      const addPlayerBtn = document.getElementById("addPlayerBtn");
+      const newPlayerNameInput = document.getElementById("newPlayerName");
+      const startingRatingInput = document.getElementById("startingRating");
+
+      addPlayerBtn.addEventListener("click", () => {
+        const name = newPlayerNameInput.value.trim();
+        let rating = Number(startingRatingInput.value);
+        if (!name) {
+          alert("Enter a player name.");
+          return;
+        }
+        if (!Number.isFinite(rating)) rating = 1500;
+
+        players.push({
+          id: generateId(),
+          name,
+          rating,
+          startingRating: rating
+        });
+
+        newPlayerNameInput.value = "";
+        saveState();
+        renderAll();
+      });
+
+      const kFactorInput = document.getElementById("kFactor");
+      kFactorInput.addEventListener("change", () => {
+        let k = Number(kFactorInput.value);
+        if (!Number.isFinite(k) || k <= 0) k = 32;
+        settings.kFactor = k;
+        // Recompute all ratings using new K
+        recalculateRatingsFromScratch();
+        saveState();
+        renderAll();
+      });
+
+      const resetAllBtn = document.getElementById("resetAllBtn");
+      resetAllBtn.addEventListener("click", () => {
+        if (!confirm("This will clear all players, games, and settings. Continue?")) {
+          return;
+        }
+        players = [];
+        games = [];
+        settings = { kFactor: 32 };
+        saveState();
+        renderAll();
+      });
+
+      const addGameBtn = document.getElementById("addGameBtn");
+      addGameBtn.addEventListener("click", () => {
+        const dateInput = document.getElementById("gameDate");
+        const date = dateInput.value || new Date().toISOString().slice(0, 10);
+
+        const slot1 = document.getElementById("slot1");
+        const slot2 = document.getElementById("slot2");
+        const slot3 = document.getElementById("slot3");
+
+        const p1 = slot1.value;
+        const p2 = slot2.value;
+        const p3 = slot3.value;
+
+        if (!p1 || !p2) {
+          alert("You need at least 1st and 2nd place players.");
+          return;
+        }
+
+        // Make sure no duplicates
+        const chosen = [p1, p2, p3].filter(Boolean);
+        const unique = new Set(chosen);
+        if (unique.size !== chosen.length) {
+          alert("Each placement must be a different player.");
+          return;
+        }
+
+        const placements = [];
+        placements.push({ playerId: p1, rank: 1 });
+        placements.push({ playerId: p2, rank: 2 });
+        if (p3) placements.push({ playerId: p3, rank: 3 });
+
+        const participants = placements.map(pl => pl.playerId);
+
+        const game = {
+          id: generateId(),
+          date,
+          placements,
+          participants
+        };
+
+        games.push(game);
+
+        // Update ratings
+        const deltas = calculateEloChanges(game, settings.kFactor || 32);
+        Object.keys(deltas).forEach(playerId => {
+          const player = getPlayerById(playerId);
+          if (player) {
+            player.rating += deltas[playerId];
+          }
+        });
+
+        saveState();
+        renderAll();
+      });
+
+      // Default date = today
+      const gameDateInput = document.getElementById("gameDate");
+      const today = new Date().toISOString().slice(0, 10);
+      gameDateInput.value = today;
+    }
+
+    // -------- Init --------
+    loadState();
+    document.addEventListener("DOMContentLoaded", () => {
+      setupEventHandlers();
+      recalculateRatingsFromScratch();
+      renderAll();
+    });
+  </script>
+</body>
+</html>
