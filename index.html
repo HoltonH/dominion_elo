@@ -247,6 +247,11 @@
       padding: 0.25rem 0.3rem;
     }
 
+    /* ELO chart */
+    #eloChartWrapper {
+      min-height: 180px;
+    }
+
     @media (max-width: 600px) {
       body {
         padding: 0.75rem;
@@ -259,6 +264,8 @@
       }
     }
   </style>
+  <!-- Chart.js for ELO over time chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <div class="container">
@@ -298,7 +305,7 @@
     <!-- TOP SECTION: Game history -->
     <div class="card">
       <h2>Game history</h2>
-      <!-- Lifetime record -->
+      <!-- Season-aware win/loss record -->
       <div id="lifetimeRecord"></div>
       <!-- Season + tabs + content -->
       <div id="gamesTableWrapper" class="small-text">
@@ -355,6 +362,14 @@
         Reset all data wipes players, games, and settings from Firestore for this league.
       </div>
     </div>
+
+    <!-- ELO over time chart -->
+    <div class="card">
+      <h2>ELO over time</h2>
+      <div id="eloChartWrapper" class="small-text">
+        ELO chart will appear after you log some games.
+      </div>
+    </div>
   </div>
 
   <!-- Main app logic + Firebase (module script) -->
@@ -397,6 +412,11 @@
     let settings = { kFactor: 32 };
     let currentHistoryTab = "all"; // 'all', 'three', or 'pair:ID1:ID2'
     let currentSeasonFilter = "all"; // 'all' or 'YYYY QX'
+
+    // ELO timeline: one entry per game in chronological order
+    // [{ date, ratings: { playerId: ratingAfterGame } }, ...]
+    let ratingTimeline = [];
+    let eloChartInstance = null;
 
     // ---------- Helpers ----------
     function getPlayerById(id) {
@@ -485,10 +505,13 @@
     }
 
     // Recalculate ratings from scratch based on players + games + settings
+    // and build ratingTimeline
     function recalculateRatingsFromScratch() {
       players.forEach(p => {
         p.rating = p.startingRating || 1500;
       });
+
+      ratingTimeline = [];
 
       const sortedGames = [...games].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
@@ -501,17 +524,27 @@
             player.rating += deltas[playerId];
           }
         });
+
+        // snapshot ratings after this game
+        const snapshot = {};
+        players.forEach(p => {
+          snapshot[p.id] = p.rating;
+        });
+        ratingTimeline.push({
+          date: game.date,
+          ratings: snapshot
+        });
       });
     }
 
-    // ---------- Lifetime record (wins/losses across all games) ----------
-    function computeLifetimeRecord() {
+    // ---------- Season / lifetime record ----------
+    function computeRecordForGames(gameList) {
       const records = {};
       players.forEach(p => {
         records[p.id] = { wins: 0, losses: 0 };
       });
 
-      games.forEach(game => {
+      gameList.forEach(game => {
         const placementsSorted = [...game.placements].sort((a, b) => a.rank - b.rank);
         const winnerPlacement = placementsSorted.find(pl => pl.rank === 1);
         if (!winnerPlacement) return;
@@ -533,12 +566,28 @@
 
     function renderLifetimeRecord() {
       const container = document.getElementById("lifetimeRecord");
-      if (!games.length || !players.length) {
-        container.innerHTML = '<div class="small-text">Lifetime record will appear after you log some games.</div>';
+      if (!players.length) {
+        container.innerHTML = '<div class="small-text">Lifetime record will appear after you add players and log some games.</div>';
         return;
       }
 
-      const records = computeLifetimeRecord();
+      let gameList;
+      let labelText;
+
+      if (currentSeasonFilter === "all") {
+        gameList = games;
+        labelText = "Lifetime win/loss (all seasons):";
+      } else {
+        gameList = games.filter(g => getSeasonKey(g.date) === currentSeasonFilter);
+        labelText = `Win/loss for ${currentSeasonFilter}:`;
+      }
+
+      if (!gameList.length) {
+        container.innerHTML = '<div class="small-text">No games in this season yet.</div>';
+        return;
+      }
+
+      const records = computeRecordForGames(gameList);
       const rows = players.map(p => {
         const r = records[p.id] || { wins: 0, losses: 0 };
         const total = r.wins + r.losses;
@@ -552,14 +601,13 @@
         };
       });
 
-      // sort by wins desc, then losses asc
       rows.sort((a, b) => {
         if (b.wins !== a.wins) return b.wins - a.wins;
         return a.losses - b.losses;
       });
 
       let html = '<div class="lifetime-table small-text">';
-      html += "<div style='margin-bottom:0.25rem;'>Lifetime win/loss (all seasons):</div>";
+      html += `<div style='margin-bottom:0.25rem;'>${labelText}</div>`;
       html += "<table><thead><tr><th>Player</th><th>W</th><th>L</th><th>Win%</th></tr></thead><tbody>";
       rows.forEach(r => {
         html += `<tr>
@@ -829,7 +877,7 @@
         const key = getSeasonKey(g.date);
         seasonSet.add(key);
       });
-      const seasons = Array.from(seasonSet).sort(); // "2025 Q4", "2026 Q1", ...
+      const seasons = Array.from(seasonSet).sort();
 
       // Filtered games by season
       const filteredGames =
@@ -858,7 +906,6 @@
       }
       html += "</div>";
 
-      // If no games in this season, show message and still allow changing season
       if (!filteredGames.length) {
         html += '<div class="small-text">No games in this season yet.</div>';
         wrapper.innerHTML = html;
@@ -868,6 +915,7 @@
         if (select) {
           select.addEventListener("change", () => {
             currentSeasonFilter = select.value;
+            renderLifetimeRecord();
             renderHistory();
           });
         }
@@ -917,6 +965,7 @@
       if (select) {
         select.addEventListener("change", () => {
           currentSeasonFilter = select.value;
+          renderLifetimeRecord();
           renderHistory();
         });
       }
@@ -955,6 +1004,79 @@
       }
     }
 
+    // ---------- ELO chart ----------
+    function renderEloChart() {
+      const wrapper = document.getElementById("eloChartWrapper");
+      if (!wrapper) return;
+
+      if (!games.length || !ratingTimeline.length || !players.length) {
+        wrapper.innerHTML = '<div class="small-text">ELO chart will appear after you log some games.</div>';
+        if (eloChartInstance) {
+          eloChartInstance.destroy();
+          eloChartInstance = null;
+        }
+        return;
+      }
+
+      // Build labels (per game)
+      const labels = ratingTimeline.map(pt => formatDate(pt.date));
+
+      // One dataset per player
+      const datasets = players.map(p => {
+        const data = ratingTimeline.map(pt =>
+          pt.ratings[p.id] !== undefined ? Math.round(pt.ratings[p.id]) : null
+        );
+        return {
+          label: p.name,
+          data,
+          borderWidth: 2,
+          tension: 0.2,
+          spanGaps: true
+        };
+      });
+
+      wrapper.innerHTML = '<canvas id="eloChartCanvas"></canvas>';
+      const ctx = document.getElementById("eloChartCanvas").getContext("2d");
+
+      if (eloChartInstance) {
+        eloChartInstance.destroy();
+      }
+
+      eloChartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              title: {
+                display: true,
+                text: "ELO rating"
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: "Game"
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              display: true,
+              labels: {
+                boxWidth: 12
+              }
+            }
+          }
+        }
+      });
+    }
+
     // ---------- Render all ----------
     function renderAll() {
       renderPlayersTable();
@@ -962,6 +1084,7 @@
       renderGamePlayersForm();
       renderLifetimeRecord();
       renderHistory();
+      renderEloChart();
 
       const kInput = document.getElementById("kFactor");
       if (kInput) {
