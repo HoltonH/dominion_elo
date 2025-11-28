@@ -445,6 +445,20 @@
       return `${year} Q${quarter}`;
     }
 
+    // Week key + label for chart downsampling
+    function getWeekKeyAndLabel(dateStr) {
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) {
+        return { key: dateStr || "Unknown", label: formatDate(dateStr) };
+      }
+      const day = d.getDay(); // 0=Sun..6=Sat
+      const diffToMonday = (day + 6) % 7; // 0 for Monday
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - diffToMonday);
+      const key = monday.toISOString().slice(0, 10); // YYYY-MM-DD
+      return { key, label: formatDate(key) };
+    }
+
     // ELO calculation given a single game + current ratings
     // 2-player: normal base K
     // 3-player: winner vs each loser only, losers equal, K scaled by 1.5
@@ -567,7 +581,7 @@
     function renderLifetimeRecord() {
       const container = document.getElementById("lifetimeRecord");
       if (!players.length) {
-        container.innerHTML = '<div class="small-text">Lifetime record will appear after you add players and log some games.</div>';
+        container.innerHTML = '<div class="small-text">Win/loss will appear after you add players and log some games.</div>';
         return;
       }
 
@@ -779,6 +793,7 @@
       return html;
     }
 
+    // Head-to-head: **only 2-player games**, no 3-player data here
     function buildHeadToHeadHtml(playerAId, playerBId, filteredGames) {
       const playerA = getPlayerById(playerAId);
       const playerB = getPlayerById(playerBId);
@@ -787,11 +802,14 @@
       }
 
       const relevantGames = filteredGames.filter(
-        g => g.participants.includes(playerAId) && g.participants.includes(playerBId)
+        g =>
+          g.participants.length === 2 &&      // ONLY 2-player games
+          g.participants.includes(playerAId) &&
+          g.participants.includes(playerBId)
       );
 
       if (!relevantGames.length) {
-        return `<div class="small-text">No games with both ${playerA.name} and ${playerB.name} in this season.</div>`;
+        return `<div class="small-text">No 2-player games with both ${playerA.name} and ${playerB.name} in this season.</div>`;
       }
 
       let winsA = 0;
@@ -810,10 +828,9 @@
         } else if (rankB < rankA) {
           winsB++;
         }
-        // if equal (both losers), don't count
       });
 
-      let html = `<div class="small-text">Games with both players in this season: ${relevantGames.length}</div>`;
+      let html = `<div class="small-text">2-player games with both players in this season: ${relevantGames.length}</div>`;
       html += `<div class="tally-row">
         <span class="tally-label">${playerA.name} wins:</span>
         <span>${winsA}</span>
@@ -910,7 +927,6 @@
         html += '<div class="small-text">No games in this season yet.</div>';
         wrapper.innerHTML = html;
 
-        // attach change handler for season filter
         const select = wrapper.querySelector("#seasonFilter");
         if (select) {
           select.addEventListener("change", () => {
@@ -960,7 +976,6 @@
 
       wrapper.innerHTML = html;
 
-      // Season filter listener
       const select = wrapper.querySelector("#seasonFilter");
       if (select) {
         select.addEventListener("change", () => {
@@ -970,7 +985,6 @@
         });
       }
 
-      // Tab listeners
       wrapper.querySelectorAll(".tab").forEach(btn => {
         btn.addEventListener("click", () => {
           const tabId = btn.getAttribute("data-tab-id");
@@ -979,7 +993,6 @@
         });
       });
 
-      // Render tab content
       const inner = document.getElementById("historyInner");
       if (!inner) return;
 
@@ -1004,7 +1017,7 @@
       }
     }
 
-    // ---------- ELO chart ----------
+    // ---------- ELO chart (weekly downsampled) ----------
     function renderEloChart() {
       const wrapper = document.getElementById("eloChartWrapper");
       if (!wrapper) return;
@@ -1018,12 +1031,24 @@
         return;
       }
 
-      // Build labels (per game)
-      const labels = ratingTimeline.map(pt => formatDate(pt.date));
+      // Downsample to once per week: keep the LAST rating snapshot per week
+      const weeklyMap = {}; // weekKey -> { date, label, ratings }
+      ratingTimeline.forEach(pt => {
+        const { key, label } = getWeekKeyAndLabel(pt.date);
+        weeklyMap[key] = {
+          date: key,
+          label,
+          ratings: pt.ratings
+        };
+      });
 
-      // One dataset per player
+      const weekKeys = Object.keys(weeklyMap).sort(); // chronological
+      const weeklyTimeline = weekKeys.map(k => weeklyMap[k]);
+
+      const labels = weeklyTimeline.map(pt => pt.label);
+
       const datasets = players.map(p => {
-        const data = ratingTimeline.map(pt =>
+        const data = weeklyTimeline.map(pt =>
           pt.ratings[p.id] !== undefined ? Math.round(pt.ratings[p.id]) : null
         );
         return {
@@ -1061,7 +1086,7 @@
             x: {
               title: {
                 display: true,
-                text: "Game"
+                text: "Week"
               }
             }
           },
@@ -1094,7 +1119,6 @@
 
     // ---------- Firestore subscriptions ----------
     function subscribeToFirestore() {
-      // Players
       onSnapshot(playersCol, snapshot => {
         players = snapshot.docs.map(docSnap => ({
           id: docSnap.id,
@@ -1104,7 +1128,6 @@
         renderAll();
       });
 
-      // Games
       onSnapshot(gamesCol, snapshot => {
         games = snapshot.docs.map(docSnap => ({
           id: docSnap.id,
@@ -1114,7 +1137,6 @@
         renderAll();
       });
 
-      // Settings (single doc)
       onSnapshot(settingsDocRef, async docSnap => {
         if (!docSnap.exists()) {
           await setDoc(settingsDocRef, { kFactor: 32 });
