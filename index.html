@@ -217,10 +217,34 @@
       margin-right: 0.25rem;
     }
 
-    .tally-marks {
-      font-family: "Menlo", "Consolas", "Courier New", monospace;
-      letter-spacing: 0.12em;
-      margin-right: 0.25rem;
+    .season-filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    .season-filter-row label {
+      margin-bottom: 0;
+    }
+
+    .season-select {
+      max-width: 180px;
+    }
+
+    .lifetime-table {
+      margin-bottom: 0.75rem;
+    }
+
+    .lifetime-table table {
+      font-size: 0.8rem;
+    }
+
+    .lifetime-table th,
+    .lifetime-table td {
+      padding: 0.25rem 0.3rem;
     }
 
     @media (max-width: 600px) {
@@ -271,9 +295,12 @@
       <div id="ratingsTableWrapper"></div>
     </div>
 
-    <!-- TOP SECTION: Game history with tabs -->
+    <!-- TOP SECTION: Game history -->
     <div class="card">
       <h2>Game history</h2>
+      <!-- Lifetime record -->
+      <div id="lifetimeRecord"></div>
+      <!-- Season + tabs + content -->
       <div id="gamesTableWrapper" class="small-text">
         No games yet – log your first one above.
       </div>
@@ -369,6 +396,7 @@
     let games = [];    // { id, date, placements, participants }
     let settings = { kFactor: 32 };
     let currentHistoryTab = "all"; // 'all', 'three', or 'pair:ID1:ID2'
+    let currentSeasonFilter = "all"; // 'all' or 'YYYY QX'
 
     // ---------- Helpers ----------
     function getPlayerById(id) {
@@ -386,14 +414,15 @@
       });
     }
 
-    function buildTallyMarks(count) {
-      if (!count) return "—";
-      let s = "";
-      for (let i = 0; i < count; i++) {
-        s += "|";
-        if ((i + 1) % 5 === 0 && i + 1 !== count) s += " ";
-      }
-      return s;
+    // Season key: "YYYY Q1"..."YYYY Q4"
+    function getSeasonKey(dateStr) {
+      if (!dateStr) return "Unknown";
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) return "Unknown";
+      const year = d.getFullYear();
+      const month = d.getMonth(); // 0-based
+      const quarter = Math.floor(month / 3) + 1;
+      return `${year} Q${quarter}`;
     }
 
     // ELO calculation given a single game + current ratings
@@ -434,12 +463,11 @@
 
           let scoreA;
           if (rankA === rankB) {
-            // Only possible tie case; keep for safety
             scoreA = 0.5;
           } else if (rankA < rankB) {
-            scoreA = 1; // A did better
+            scoreA = 1;
           } else {
-            scoreA = 0; // B did better
+            scoreA = 0;
           }
           const scoreB = 1 - scoreA;
 
@@ -476,6 +504,76 @@
       });
     }
 
+    // ---------- Lifetime record (wins/losses across all games) ----------
+    function computeLifetimeRecord() {
+      const records = {};
+      players.forEach(p => {
+        records[p.id] = { wins: 0, losses: 0 };
+      });
+
+      games.forEach(game => {
+        const placementsSorted = [...game.placements].sort((a, b) => a.rank - b.rank);
+        const winnerPlacement = placementsSorted.find(pl => pl.rank === 1);
+        if (!winnerPlacement) return;
+        const winnerId = winnerPlacement.playerId;
+
+        if (!records[winnerId]) records[winnerId] = { wins: 0, losses: 0 };
+        records[winnerId].wins += 1;
+
+        placementsSorted.forEach(pl => {
+          if (pl.playerId !== winnerId) {
+            if (!records[pl.playerId]) records[pl.playerId] = { wins: 0, losses: 0 };
+            records[pl.playerId].losses += 1;
+          }
+        });
+      });
+
+      return records;
+    }
+
+    function renderLifetimeRecord() {
+      const container = document.getElementById("lifetimeRecord");
+      if (!games.length || !players.length) {
+        container.innerHTML = '<div class="small-text">Lifetime record will appear after you log some games.</div>';
+        return;
+      }
+
+      const records = computeLifetimeRecord();
+      const rows = players.map(p => {
+        const r = records[p.id] || { wins: 0, losses: 0 };
+        const total = r.wins + r.losses;
+        const winPct = total ? ((r.wins / total) * 100).toFixed(1) : "—";
+        return {
+          name: p.name,
+          wins: r.wins,
+          losses: r.losses,
+          winPct,
+          total
+        };
+      });
+
+      // sort by wins desc, then losses asc
+      rows.sort((a, b) => {
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        return a.losses - b.losses;
+      });
+
+      let html = '<div class="lifetime-table small-text">';
+      html += "<div style='margin-bottom:0.25rem;'>Lifetime win/loss (all seasons):</div>";
+      html += "<table><thead><tr><th>Player</th><th>W</th><th>L</th><th>Win%</th></tr></thead><tbody>";
+      rows.forEach(r => {
+        html += `<tr>
+          <td>${r.name}</td>
+          <td>${r.wins}</td>
+          <td>${r.losses}</td>
+          <td>${r.winPct === "—" ? "—" : r.winPct + "%"}</td>
+        </tr>`;
+      });
+      html += "</tbody></table></div>";
+
+      container.innerHTML = html;
+    }
+
     // ---------- Rendering: players ----------
     function renderPlayersTable() {
       const wrapper = document.getElementById("playersTableWrapper");
@@ -485,14 +583,16 @@
       }
 
       const sorted = [...players].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      const leaderId = sorted.length ? sorted[0].id : null;
 
       let html = "<table><thead><tr>";
       html += "<th>Name</th><th>Rating</th><th>Games</th><th></th></tr></thead><tbody>";
 
       sorted.forEach(p => {
         const numGames = games.filter(g => g.participants.includes(p.id)).length;
+        const displayName = p.id === leaderId ? `👑 ${p.name}` : p.name;
         html += `<tr>
-          <td>${p.name}</td>
+          <td>${displayName}</td>
           <td class="rating">${Math.round(p.rating)}</td>
           <td>${numGames}</td>
           <td><button class="secondary" data-remove-player="${p.id}">Remove</button></td>
@@ -522,15 +622,17 @@
       }
 
       const sorted = [...players].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      const leaderId = sorted.length ? sorted[0].id : null;
 
       let html = "<table><thead><tr>";
       html += "<th>#</th><th>Name</th><th>Rating</th><th>Games</th></tr></thead><tbody>";
 
       sorted.forEach((p, idx) => {
         const numGames = games.filter(g => g.participants.includes(p.id)).length;
+        const displayName = p.id === leaderId ? `👑 ${p.name}` : p.name;
         html += `<tr>
           <td>${idx + 1}</td>
-          <td>${p.name}</td>
+          <td>${displayName}</td>
           <td class="rating">${Math.round(p.rating)}</td>
           <td>${numGames}</td>
         </tr>`;
@@ -585,12 +687,12 @@
 
     // ---------- Rendering: history helpers ----------
 
-    function buildAllGamesTableHtml() {
-      if (!games.length) {
-        return '<div class="small-text">No games yet – log your first one above.</div>';
+    function buildAllGamesTableHtml(filteredGames) {
+      if (!filteredGames.length) {
+        return '<div class="small-text">No games in this season yet.</div>';
       }
 
-      const sorted = [...games].sort((a, b) => {
+      const sorted = [...filteredGames].sort((a, b) => {
         const da = a.date || "";
         const db = b.date || "";
         return db.localeCompare(da);
@@ -614,8 +716,8 @@
             return p ? `💀 ${p.name}` : null;
           })
         ]
-        .filter(Boolean)
-        .join("<br/>");
+          .filter(Boolean)
+          .join("<br/>");
 
         html += `<tr>
           <td>${formatDate(game.date)}</td>
@@ -629,19 +731,19 @@
       return html;
     }
 
-    function buildHeadToHeadHtml(playerAId, playerBId) {
+    function buildHeadToHeadHtml(playerAId, playerBId, filteredGames) {
       const playerA = getPlayerById(playerAId);
       const playerB = getPlayerById(playerBId);
       if (!playerA || !playerB) {
         return '<div class="small-text">Players not found.</div>';
       }
 
-      const relevantGames = games.filter(
+      const relevantGames = filteredGames.filter(
         g => g.participants.includes(playerAId) && g.participants.includes(playerBId)
       );
 
       if (!relevantGames.length) {
-        return `<div class="small-text">No games yet with both ${playerA.name} and ${playerB.name}.</div>`;
+        return `<div class="small-text">No games with both ${playerA.name} and ${playerB.name} in this season.</div>`;
       }
 
       let winsA = 0;
@@ -660,33 +762,27 @@
         } else if (rankB < rankA) {
           winsB++;
         }
-        // if equal rank (both losers in 3p), we don't count either way
+        // if equal (both losers), don't count
       });
 
-      const tallyA = buildTallyMarks(winsA);
-      const tallyB = buildTallyMarks(winsB);
-
-      let html = "";
-      html += `<div class="small-text">Games with both players: ${relevantGames.length}</div>`;
+      let html = `<div class="small-text">Games with both players in this season: ${relevantGames.length}</div>`;
       html += `<div class="tally-row">
         <span class="tally-label">${playerA.name} wins:</span>
-        <span class="tally-marks">${tallyA}</span>
-        <span>(${winsA})</span>
+        <span>${winsA}</span>
       </div>`;
       html += `<div class="tally-row">
         <span class="tally-label">${playerB.name} wins:</span>
-        <span class="tally-marks">${tallyB}</span>
-        <span>(${winsB})</span>
+        <span>${winsB}</span>
       </div>`;
 
       return html;
     }
 
-    function buildThreePlayerStatsHtml() {
-      const threePlayerGames = games.filter(g => g.participants.length === 3);
+    function buildThreePlayerStatsHtml(filteredGames) {
+      const threePlayerGames = filteredGames.filter(g => g.participants.length === 3);
 
       if (!threePlayerGames.length) {
-        return '<div class="small-text">No 3-player games logged yet.</div>';
+        return '<div class="small-text">No 3-player games in this season.</div>';
       }
 
       const winCounts = {};
@@ -703,22 +799,20 @@
         winCounts[winnerPlacement.playerId]++;
       });
 
-      let html = `<div class="small-text">Total 3-player games: ${threePlayerGames.length}</div>`;
+      let html = `<div class="small-text">Total 3-player games this season: ${threePlayerGames.length}</div>`;
 
       players.forEach(p => {
         const wins = winCounts[p.id] || 0;
-        const tally = buildTallyMarks(wins);
         html += `<div class="tally-row">
-          <span class="tally-label">${p.name} wins:</span>
-          <span class="tally-marks">${tally}</span>
-          <span>(${wins})</span>
+          <span class="tally-label">${p.name} 3-player wins:</span>
+          <span>${wins}</span>
         </div>`;
       });
 
       return html;
     }
 
-    // ---------- Rendering: history with tabs ----------
+    // ---------- Rendering: history with seasons + tabs ----------
     function renderHistory() {
       const wrapper = document.getElementById("gamesTableWrapper");
       const gamesCountBadge = document.getElementById("gamesCountBadge");
@@ -729,11 +823,61 @@
         return;
       }
 
+      // Build list of seasons present
+      const seasonSet = new Set();
+      games.forEach(g => {
+        const key = getSeasonKey(g.date);
+        seasonSet.add(key);
+      });
+      const seasons = Array.from(seasonSet).sort(); // "2025 Q4", "2026 Q1", ...
+
+      // Filtered games by season
+      const filteredGames =
+        currentSeasonFilter === "all"
+          ? games
+          : games.filter(g => getSeasonKey(g.date) === currentSeasonFilter);
+
+      // Build season selector + tabs container
+      let html = "";
+
+      // Season filter row
+      html += '<div class="season-filter-row">';
+      html += '<label for="seasonFilter">Season:</label>';
+      html += '<select id="seasonFilter" class="season-select">';
+      html += `<option value="all"${currentSeasonFilter === "all" ? " selected" : ""}>All seasons</option>`;
+      seasons.forEach(seasonKey => {
+        html += `<option value="${seasonKey}"${
+          currentSeasonFilter === seasonKey ? " selected" : ""
+        }>${seasonKey}</option>`;
+      });
+      html += "</select>";
+      if (currentSeasonFilter === "all") {
+        html += '<span class="small-text">Showing all games.</span>';
+      } else {
+        html += `<span class="small-text">Showing games for ${currentSeasonFilter}.</span>`;
+      }
+      html += "</div>";
+
+      // If no games in this season, show message and still allow changing season
+      if (!filteredGames.length) {
+        html += '<div class="small-text">No games in this season yet.</div>';
+        wrapper.innerHTML = html;
+
+        // attach change handler for season filter
+        const select = wrapper.querySelector("#seasonFilter");
+        if (select) {
+          select.addEventListener("change", () => {
+            currentSeasonFilter = select.value;
+            renderHistory();
+          });
+        }
+        return;
+      }
+
       // Build tab definitions
       const tabs = [];
       tabs.push({ id: "all", label: "All games" });
 
-      // Pair tabs for each unique pair of players
       const pairTabs = [];
       for (let i = 0; i < players.length; i++) {
         for (let j = i + 1; j < players.length; j++) {
@@ -749,28 +893,35 @@
       }
       tabs.push(...pairTabs);
 
-      // 3-player tab if there is at least one 3-player game
-      const hasThreePlayer = games.some(g => g.participants.length === 3);
+      const hasThreePlayer = filteredGames.some(g => g.participants.length === 3);
       if (hasThreePlayer) {
         tabs.push({ id: "three", label: "3-player games" });
       }
 
-      // Ensure currentHistoryTab is valid
       if (!tabs.find(t => t.id === currentHistoryTab)) {
         currentHistoryTab = "all";
       }
 
-      // Build tabs HTML
-      let tabsHtml = '<div class="tabs">';
+      // Tabs HTML
+      html += '<div class="tabs">';
       tabs.forEach(t => {
         const activeClass = t.id === currentHistoryTab ? "tab-active" : "";
-        tabsHtml += `<button class="tab ${activeClass}" data-tab-id="${t.id}">${t.label}</button>`;
+        html += `<button class="tab ${activeClass}" data-tab-id="${t.id}">${t.label}</button>`;
       });
-      tabsHtml += '</div><div id="historyInner"></div>';
+      html += '</div><div id="historyInner"></div>';
 
-      wrapper.innerHTML = tabsHtml;
+      wrapper.innerHTML = html;
 
-      // Attach tab click handlers
+      // Season filter listener
+      const select = wrapper.querySelector("#seasonFilter");
+      if (select) {
+        select.addEventListener("change", () => {
+          currentSeasonFilter = select.value;
+          renderHistory();
+        });
+      }
+
+      // Tab listeners
       wrapper.querySelectorAll(".tab").forEach(btn => {
         btn.addEventListener("click", () => {
           const tabId = btn.getAttribute("data-tab-id");
@@ -779,13 +930,12 @@
         });
       });
 
-      // Render inner content based on current tab
+      // Render tab content
       const inner = document.getElementById("historyInner");
       if (!inner) return;
 
       if (currentHistoryTab === "all") {
-        inner.innerHTML = buildAllGamesTableHtml();
-        // wire delete buttons inside table
+        inner.innerHTML = buildAllGamesTableHtml(filteredGames);
         inner.querySelectorAll("button[data-delete-game]").forEach(btn => {
           btn.addEventListener("click", async () => {
             const id = btn.getAttribute("data-delete-game");
@@ -796,12 +946,12 @@
           });
         });
       } else if (currentHistoryTab === "three") {
-        inner.innerHTML = buildThreePlayerStatsHtml();
+        inner.innerHTML = buildThreePlayerStatsHtml(filteredGames);
       } else if (currentHistoryTab.startsWith("pair:")) {
         const parts = currentHistoryTab.split(":");
         const aId = parts[1];
         const bId = parts[2];
-        inner.innerHTML = buildHeadToHeadHtml(aId, bId);
+        inner.innerHTML = buildHeadToHeadHtml(aId, bId, filteredGames);
       }
     }
 
@@ -810,6 +960,7 @@
       renderPlayersTable();
       renderRatingsTable();
       renderGamePlayersForm();
+      renderLifetimeRecord();
       renderHistory();
 
       const kInput = document.getElementById("kFactor");
