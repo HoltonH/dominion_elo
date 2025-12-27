@@ -705,18 +705,44 @@
     }
 
     // ---------- Rendering: log-game form ----------
-    function renderGamePlayersForm() {
-      const section = document.getElementById("gamePlayersSection");
-      if (players.length < 2) {
-        section.innerHTML = '<div class="small-text danger">You need at least 2 players to log a game.</div>';
-        return;
-      }
+function renderGamePlayersForm() {
+  const section = document.getElementById("gamePlayersSection");
+  if (players.length < 2) {
+    section.innerHTML = '<div class="small-text danger">You need at least 2 players to log a game.</div>';
+    return;
+  }
 
-      const playerOptions = players
-        .map(p => `<option value="${p.id}">${p.name}</option>`)
-        .join("");
+  const playerOptions = players
+    .map(p => `<option value="${p.id}">${p.name}</option>`)
+    .join("");
 
-      section.innerHTML = `
+  section.innerHTML = `
+    <div class="row">
+      <div class="field inline" style="max-width:200px;">
+        <label>Game type</label>
+        <select id="gameType">
+          <option value="2">2 players</option>
+          <option value="3">3 players</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="gameTypeFields" style="margin-top:0.5rem;"></div>
+
+    <div class="small-text">
+      2-player: Winner / Loser.<br/>
+      3-player: 1st / 2nd / 3rd. These results affect ELO, but do <b>not</b> count in head-to-head tabs (those are 2-player only).
+    </div>
+  `;
+
+  const fields = section.querySelector("#gameTypeFields");
+  const gameTypeSelect = section.querySelector("#gameType");
+
+  function renderFields() {
+    const type = gameTypeSelect.value;
+
+    if (type === "2") {
+      fields.innerHTML = `
         <div class="row">
           <div class="field">
             <label>Winner</label>
@@ -726,26 +752,47 @@
             </select>
           </div>
           <div class="field">
-            <label>Loser 1</label>
-            <select id="slotLoser1">
+            <label>Loser</label>
+            <select id="slotLoser">
               <option value="">-- select loser --</option>
               ${playerOptions}
             </select>
           </div>
+        </div>
+      `;
+    } else {
+      fields.innerHTML = `
+        <div class="row">
           <div class="field">
-            <label>Loser 2 (optional)</label>
-            <select id="slotLoser2">
-              <option value="">-- none --</option>
+            <label>1st</label>
+            <select id="slotFirst">
+              <option value="">-- select 1st --</option>
+              ${playerOptions}
+            </select>
+          </div>
+          <div class="field">
+            <label>2nd</label>
+            <select id="slotSecond">
+              <option value="">-- select 2nd --</option>
+              ${playerOptions}
+            </select>
+          </div>
+          <div class="field">
+            <label>3rd</label>
+            <select id="slotThird">
+              <option value="">-- select 3rd --</option>
               ${playerOptions}
             </select>
           </div>
         </div>
-        <div class="small-text">
-          2-player game: pick a Winner and a single Loser 1.<br/>
-          3-player game: pick a Winner and both Loser 1 and Loser 2.
-        </div>
       `;
     }
+  }
+
+  gameTypeSelect.addEventListener("change", renderFields);
+  renderFields();
+}
+
 
     // ---------- Rendering: history helpers ----------
 
