@@ -240,6 +240,43 @@
       min-height: 180px;
     }
 
+    /* Admin dropdown */
+    details.admin {
+      margin-top: 1rem;
+    }
+    details.admin > summary {
+      list-style: none;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      font-weight: 600;
+    }
+    details.admin > summary::-webkit-details-marker {
+      display: none;
+    }
+    .chev {
+      font-size: 0.9rem;
+      color: #9ca3af;
+    }
+    details.admin[open] .chev {
+      transform: rotate(180deg);
+      display: inline-block;
+    }
+    .admin-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+    @media (min-width: 800px) {
+      .admin-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
     @media (max-width: 600px) {
       body { padding: 0.75rem; }
       .card { padding: 0.75rem; }
@@ -286,6 +323,14 @@
       <div id="ratingsTableWrapper"></div>
     </div>
 
+    <!-- ELO chart moved directly below Ratings -->
+    <div class="card">
+      <h2>ELO over time (weekly)</h2>
+      <div id="eloChartWrapper" class="small-text">
+        ELO chart will appear after you log some games.
+      </div>
+    </div>
+
     <!-- Game history -->
     <div class="card">
       <h2>Game history</h2>
@@ -295,57 +340,61 @@
       </div>
     </div>
 
-    <!-- Players -->
+    <!-- Admin dropdown at bottom: Players + Settings -->
     <div class="card">
-      <div class="flex-between">
-        <h2>Players</h2>
-        <span class="badge">Shared via Firebase Firestore (all of you see the same league)</span>
-      </div>
+      <details class="admin">
+        <summary>
+          <span>League settings & players</span>
+          <span class="chev">▾</span>
+        </summary>
 
-      <div class="row">
-        <div class="field">
-          <label for="newPlayerName">Add player</label>
-          <input id="newPlayerName" type="text" placeholder="e.g. Seymore" />
-        </div>
-        <div class="field inline" style="max-width:160px;">
-          <label for="startingRating">Starting rating</label>
-          <input id="startingRating" type="number" value="1500" />
-        </div>
-        <div class="field" style="flex:0 0 auto;">
-          <button id="addPlayerBtn">+ Add</button>
-        </div>
-      </div>
+        <div class="admin-grid">
+          <!-- Players panel -->
+          <div>
+            <h3 style="margin-top:0;">Players</h3>
 
-      <div class="small-text">Add your three names once and reuse them.</div>
-      <div id="playersTableWrapper" style="margin-top:0.75rem;"></div>
-    </div>
+            <div class="row">
+              <div class="field">
+                <label for="newPlayerName">Add player</label>
+                <input id="newPlayerName" type="text" placeholder="e.g. Seymore" />
+              </div>
+              <div class="field inline" style="max-width:160px;">
+                <label for="startingRating">Starting rating</label>
+                <input id="startingRating" type="number" value="1500" />
+              </div>
+              <div class="field" style="flex:0 0 auto;">
+                <button id="addPlayerBtn">+ Add</button>
+              </div>
+            </div>
 
-    <!-- Settings -->
-    <div class="card">
-      <h2>Settings</h2>
-      <div class="row">
-        <div class="field inline" style="max-width:200px;">
-          <label for="kFactor">Base K-factor</label>
-          <input id="kFactor" type="number" value="32" min="1" max="100" />
-          <div class="small-text">
-            Used for 2-player games. 3-player games use a mild bump (1.25×) internally.
+            <div class="small-text">Add your three names once and reuse them.</div>
+            <div id="playersTableWrapper" style="margin-top:0.75rem;"></div>
+          </div>
+
+          <!-- Settings panel -->
+          <div>
+            <h3 style="margin-top:0;">Settings</h3>
+
+            <div class="row">
+              <div class="field inline" style="max-width:220px;">
+                <label for="kFactor">Base K-factor</label>
+                <input id="kFactor" type="number" value="32" min="1" max="100" />
+                <div class="small-text">
+                  Used for 2-player games. 3-player games use a mild bump (1.25×) internally.
+                </div>
+              </div>
+
+              <div class="field" style="flex:0 0 auto;">
+                <button class="secondary" id="resetAllBtn">Reset all data</button>
+              </div>
+            </div>
+
+            <div class="small-text danger">
+              Reset wipes players, games, and settings from Firestore for this league.
+            </div>
           </div>
         </div>
-        <div class="field" style="flex:0 0 auto;">
-          <button class="secondary" id="resetAllBtn">Reset all data</button>
-        </div>
-      </div>
-      <div class="small-text danger">
-        Reset wipes players, games, and settings from Firestore for this league.
-      </div>
-    </div>
-
-    <!-- ELO chart -->
-    <div class="card">
-      <h2>ELO over time (weekly)</h2>
-      <div id="eloChartWrapper" class="small-text">
-        ELO chart will appear after you log some games.
-      </div>
+      </details>
     </div>
   </div>
 
@@ -580,6 +629,8 @@
     // ---------- UI renderers ----------
     function renderPlayersTable() {
       const wrapper = document.getElementById("playersTableWrapper");
+      if (!wrapper) return;
+
       if (!players.length) {
         wrapper.innerHTML = '<div class="small-text">Add players above to get started.</div>';
         return;
@@ -613,6 +664,8 @@
 
     function renderRatingsTable() {
       const wrapper = document.getElementById("ratingsTableWrapper");
+      if (!wrapper) return;
+
       if (!players.length) {
         wrapper.innerHTML = '<div class="small-text">No players yet.</div>';
         return;
@@ -638,6 +691,8 @@
 
     function renderGamePlayersForm() {
       const section = document.getElementById("gamePlayersSection");
+      if (!section) return;
+
       if (players.length < 2) {
         section.innerHTML = '<div class="small-text danger">You need at least 2 players to log a game.</div>';
         return;
@@ -736,9 +791,7 @@
         const name2 = p2 ? (getPlayerById(p2.playerId)?.name || "Unknown") : null;
         const name3 = p3 ? (getPlayerById(p3.playerId)?.name || "Unknown") : null;
 
-        let resultText = n === 2
-          ? `Winner: ${name1}`
-          : `1st: ${name1}`;
+        let resultText = n === 2 ? `Winner: ${name1}` : `1st: ${name1}`;
 
         const playersList = [];
         if (n === 2) {
@@ -794,7 +847,7 @@
       `;
     }
 
-    // 3-player tab: show 1st/2nd/3rd counts per player (fits your new model)
+    // 3-player tab: show 1st/2nd/3rd counts per player
     function buildThreePlayerStatsHtml(filteredGames) {
       const threeGames = filteredGames.filter(g => g.participants.length === 3);
       if (!threeGames.length) return '<div class="small-text">No 3-player games in this season.</div>';
@@ -825,8 +878,10 @@
 
     function renderHistory() {
       const wrapper = document.getElementById("gamesTableWrapper");
+      if (!wrapper) return;
+
       const badge = document.getElementById("gamesCountBadge");
-      badge.textContent = `${games.length} game${games.length === 1 ? "" : "s"} logged`;
+      if (badge) badge.textContent = `${games.length} game${games.length === 1 ? "" : "s"} logged`;
 
       if (!games.length) {
         wrapper.innerHTML = '<div class="small-text">No games yet – log your first one above.</div>';
@@ -1039,64 +1094,70 @@
 
       if (gameDateInput) gameDateInput.value = new Date().toISOString().slice(0, 10);
 
-      addPlayerBtn.addEventListener("click", async () => {
-        const name = newPlayerNameInput.value.trim();
-        let rating = Number(startingRatingInput.value);
-        if (!name) return alert("Enter a player name.");
-        if (!Number.isFinite(rating)) rating = 1500;
+      if (addPlayerBtn) {
+        addPlayerBtn.addEventListener("click", async () => {
+          const name = (newPlayerNameInput?.value || "").trim();
+          let rating = Number(startingRatingInput?.value);
+          if (!name) return alert("Enter a player name.");
+          if (!Number.isFinite(rating)) rating = 1500;
 
-        await addDoc(playersCol, { name, startingRating: rating });
-        newPlayerNameInput.value = "";
-      });
+          await addDoc(playersCol, { name, startingRating: rating });
+          if (newPlayerNameInput) newPlayerNameInput.value = "";
+        });
+      }
 
-      kFactorInput.addEventListener("change", async () => {
-        let k = Number(kFactorInput.value);
-        if (!Number.isFinite(k) || k <= 0) k = 32;
-        await setDoc(settingsDocRef, { kFactor: k }, { merge: true });
-      });
+      if (kFactorInput) {
+        kFactorInput.addEventListener("change", async () => {
+          let k = Number(kFactorInput.value);
+          if (!Number.isFinite(k) || k <= 0) k = 32;
+          await setDoc(settingsDocRef, { kFactor: k }, { merge: true });
+        });
+      }
 
-      resetAllBtn.addEventListener("click", resetAllData);
+      if (resetAllBtn) resetAllBtn.addEventListener("click", resetAllData);
 
-      addGameBtn.addEventListener("click", async () => {
-        const date = document.getElementById("gameDate")?.value || new Date().toISOString().slice(0, 10);
-        const gameType = document.getElementById("gameType")?.value || "2";
+      if (addGameBtn) {
+        addGameBtn.addEventListener("click", async () => {
+          const date = document.getElementById("gameDate")?.value || new Date().toISOString().slice(0, 10);
+          const gameType = document.getElementById("gameType")?.value || "2";
 
-        let placements = [];
-        let participants = [];
+          let placements = [];
+          let participants = [];
 
-        if (gameType === "2") {
-          const winnerId = document.getElementById("slotWinner")?.value;
-          const loserId = document.getElementById("slotLoser")?.value;
+          if (gameType === "2") {
+            const winnerId = document.getElementById("slotWinner")?.value;
+            const loserId = document.getElementById("slotLoser")?.value;
 
-          if (!winnerId || !loserId) return alert("Pick a winner and a loser.");
-          if (winnerId === loserId) return alert("Winner and loser must be different.");
+            if (!winnerId || !loserId) return alert("Pick a winner and a loser.");
+            if (winnerId === loserId) return alert("Winner and loser must be different.");
 
-          placements = [
-            { playerId: winnerId, rank: 1 },
-            { playerId: loserId, rank: 2 }
-          ];
-          participants = [winnerId, loserId];
-        } else {
-          const firstId = document.getElementById("slotFirst")?.value;
-          const secondId = document.getElementById("slotSecond")?.value;
-          const thirdId = document.getElementById("slotThird")?.value;
+            placements = [
+              { playerId: winnerId, rank: 1 },
+              { playerId: loserId, rank: 2 }
+            ];
+            participants = [winnerId, loserId];
+          } else {
+            const firstId = document.getElementById("slotFirst")?.value;
+            const secondId = document.getElementById("slotSecond")?.value;
+            const thirdId = document.getElementById("slotThird")?.value;
 
-          if (!firstId || !secondId || !thirdId) return alert("Pick 1st, 2nd, and 3rd.");
+            if (!firstId || !secondId || !thirdId) return alert("Pick 1st, 2nd, and 3rd.");
 
-          const chosen = [firstId, secondId, thirdId];
-          const unique = new Set(chosen);
-          if (unique.size !== 3) return alert("1st, 2nd, and 3rd must be different players.");
+            const chosen = [firstId, secondId, thirdId];
+            const unique = new Set(chosen);
+            if (unique.size !== 3) return alert("1st, 2nd, and 3rd must be different players.");
 
-          placements = [
-            { playerId: firstId, rank: 1 },
-            { playerId: secondId, rank: 2 },
-            { playerId: thirdId, rank: 3 }
-          ];
-          participants = chosen;
-        }
+            placements = [
+              { playerId: firstId, rank: 1 },
+              { playerId: secondId, rank: 2 },
+              { playerId: thirdId, rank: 3 }
+            ];
+            participants = chosen;
+          }
 
-        await addDoc(gamesCol, { date, placements, participants });
-      });
+          await addDoc(gamesCol, { date, placements, participants });
+        });
+      }
     }
 
     // ---------- Init ----------
