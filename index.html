@@ -463,93 +463,71 @@
     // 2-player: normal base K
     // 3-player: winner vs each loser only, losers equal, K scaled by 1.5
     function calculateEloChanges(game, baseK) {
-      const participants = game.participants.map(id => getPlayerById(id)).filter(Boolean);
-      const deltas = {};
-      participants.forEach(p => (deltas[p.id] = 0));
+  const participants = game.participants.map(id => getPlayerById(id)).filter(Boolean);
+  const deltas = {};
+  participants.forEach(p => (deltas[p.id] = 0));
 
-      const n = participants.length;
-      const kFactor = n === 3 ? baseK * 1.5 : baseK;
+  const n = participants.length;
 
-      // Snapshot of ratings at game start
-      const ratingsAtStart = {};
-      participants.forEach(p => {
-        ratingsAtStart[p.id] = p.rating;
-      });
+  // Mild bump for 3-player volatility
+  const kFactor = n === 3 ? baseK * 1.25 : baseK;
 
-      for (let i = 0; i < participants.length; i++) {
-        for (let j = i + 1; j < participants.length; j++) {
-          const pA = participants[i];
-          const pB = participants[j];
+  // Snapshot ratings at game start
+  const ratingsAtStart = {};
+  participants.forEach(p => {
+    ratingsAtStart[p.id] = p.rating;
+  });
 
-          const rA = ratingsAtStart[pA.id];
-          const rB = ratingsAtStart[pB.id];
+  function getRank(pid) {
+    const pl = game.placements.find(x => x.playerId === pid);
+    return pl ? pl.rank : 999;
+  }
 
-          const placementA = game.placements.find(pl => pl.playerId === pA.id);
-          const placementB = game.placements.find(pl => pl.playerId === pB.id);
+  // Pair weight: soften 2nd vs 3rd so 3rd loses a bit more,
+  // but not so much that 2nd "beats" 3rd in a huge way.
+  function pairWeight(rankA, rankB) {
+    if (n !== 3) return 1;
+    const a = Math.min(rankA, rankB);
+    const b = Math.max(rankA, rankB);
+    if (a === 2 && b === 3) return 0.6; // tweakable: 0.5–0.8 range feels good
+    return 1;
+  }
 
-          const rankA = placementA ? placementA.rank : 2;
-          const rankB = placementB ? placementB.rank : 2;
+  for (let i = 0; i < participants.length; i++) {
+    for (let j = i + 1; j < participants.length; j++) {
+      const pA = participants[i];
+      const pB = participants[j];
 
-          // In 3-player game, if both are losers, skip (no loser-vs-loser match)
-          if (n === 3 && rankA > 1 && rankB > 1) {
-            continue;
-          }
+      const rA = ratingsAtStart[pA.id];
+      const rB = ratingsAtStart[pB.id];
 
-          let scoreA;
-          if (rankA === rankB) {
-            scoreA = 0.5;
-          } else if (rankA < rankB) {
-            scoreA = 1;
-          } else {
-            scoreA = 0;
-          }
-          const scoreB = 1 - scoreA;
+      const rankA = getRank(pA.id);
+      const rankB = getRank(pB.id);
 
-          const expectedA = 1 / (1 + Math.pow(10, (rB - rA) / 400));
-          const expectedB = 1 - expectedA;
+      // Determine score from rank
+      let scoreA;
+      if (rankA === rankB) scoreA = 0.5;
+      else if (rankA < rankB) scoreA = 1;
+      else scoreA = 0;
 
-          const deltaA = kFactor * (scoreA - expectedA);
-          const deltaB = kFactor * (scoreB - expectedB);
+      const scoreB = 1 - scoreA;
 
-          deltas[pA.id] += deltaA;
-          deltas[pB.id] += deltaB;
-        }
-      }
-      return deltas;
+      const expectedA = 1 / (1 + Math.pow(10, (rB - rA) / 400));
+      const expectedB = 1 - expectedA;
+
+      const w = pairWeight(rankA, rankB);
+
+      const deltaA = w * kFactor * (scoreA - expectedA);
+      const deltaB = w * kFactor * (scoreB - expectedB);
+
+      deltas[pA.id] += deltaA;
+      deltas[pB.id] += deltaB;
     }
+  }
 
-    // Recalculate ratings from scratch based on players + games + settings
-    // and build ratingTimeline
-    function recalculateRatingsFromScratch() {
-      players.forEach(p => {
-        p.rating = p.startingRating || 1500;
-      });
+  return deltas;
+}
 
-      ratingTimeline = [];
-
-      const sortedGames = [...games].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-
-      sortedGames.forEach(game => {
-        const k = settings.kFactor || 32;
-        const deltas = calculateEloChanges(game, k);
-        Object.keys(deltas).forEach(playerId => {
-          const player = getPlayerById(playerId);
-          if (player) {
-            player.rating += deltas[playerId];
-          }
-        });
-
-        // snapshot ratings after this game
-        const snapshot = {};
-        players.forEach(p => {
-          snapshot[p.id] = p.rating;
-        });
-        ratingTimeline.push({
-          date: game.date,
-          ratings: snapshot
-        });
-      });
-    }
 
     // ---------- Season / lifetime record ----------
     function computeRecordForGames(gameList) {
@@ -1262,47 +1240,62 @@ function renderGamePlayersForm() {
 
       if (addGameBtn) {
         addGameBtn.addEventListener("click", async () => {
-          const dateInput = document.getElementById("gameDate");
-          const date = dateInput.value || new Date().toISOString().slice(0, 10);
+  const dateInput = document.getElementById("gameDate");
+  const date = dateInput.value || new Date().toISOString().slice(0, 10);
 
-          const winnerSel = document.getElementById("slotWinner");
-          const loser1Sel = document.getElementById("slotLoser1");
-          const loser2Sel = document.getElementById("slotLoser2");
+  const gameType = document.getElementById("gameType")?.value || "2";
 
-          const winnerId = winnerSel.value;
-          const loser1Id = loser1Sel.value;
-          const loser2Id = loser2Sel.value;
+  let placements = [];
+  let participants = [];
 
-          if (!winnerId || !loser1Id) {
-            alert("You need at least a winner and one loser.");
-            return;
-          }
+  if (gameType === "2") {
+    const winnerId = document.getElementById("slotWinner")?.value;
+    const loserId = document.getElementById("slotLoser")?.value;
 
-          const chosen = [winnerId, loser1Id, loser2Id].filter(Boolean);
-          const unique = new Set(chosen);
-          if (unique.size !== chosen.length) {
-            alert("Each slot must be a different player.");
-            return;
-          }
-
-          const placements = [
-            { playerId: winnerId, rank: 1 },
-            { playerId: loser1Id, rank: 2 }
-          ];
-          if (loser2Id) placements.push({ playerId: loser2Id, rank: 2 });
-
-          const participants = placements.map(pl => pl.playerId);
-
-          const game = {
-            date,
-            placements,
-            participants
-          };
-
-          await addDoc(gamesCol, game);
-        });
-      }
+    if (!winnerId || !loserId) {
+      alert("Pick a winner and a loser.");
+      return;
     }
+
+    if (winnerId === loserId) {
+      alert("Winner and loser must be different players.");
+      return;
+    }
+
+    placements = [
+      { playerId: winnerId, rank: 1 },
+      { playerId: loserId, rank: 2 }
+    ];
+    participants = [winnerId, loserId];
+  } else {
+    const firstId = document.getElementById("slotFirst")?.value;
+    const secondId = document.getElementById("slotSecond")?.value;
+    const thirdId = document.getElementById("slotThird")?.value;
+
+    if (!firstId || !secondId || !thirdId) {
+      alert("Pick 1st, 2nd, and 3rd.");
+      return;
+    }
+
+    const chosen = [firstId, secondId, thirdId];
+    const unique = new Set(chosen);
+    if (unique.size !== 3) {
+      alert("1st, 2nd, and 3rd must all be different players.");
+      return;
+    }
+
+    placements = [
+      { playerId: firstId, rank: 1 },
+      { playerId: secondId, rank: 2 },
+      { playerId: thirdId, rank: 3 }
+    ];
+    participants = chosen;
+  }
+
+  const game = { date, placements, participants };
+  await addDoc(gamesCol, game);
+});
+
 
     // ---------- Init ----------
     document.addEventListener("DOMContentLoaded", () => {
